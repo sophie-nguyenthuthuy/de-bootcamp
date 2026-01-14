@@ -1,0 +1,268 @@
+version: "3.9"
+
+networks:
+  de-net:
+
+volumes:
+  pg_data:
+  minio_data:
+  hive_metastore_db:
+  spark_history:
+  airflow_logs:
+  airflow_dags:
+  airflow_plugins:
+  metabase_data:
+  redis_data:
+
+services:
+  ###########################################################################
+  # CORE: PostgreSQL
+  ###########################################################################
+  postgres:
+    image: postgres:15
+    container_name: de_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: de_user
+      POSTGRES_PASSWORD: de_pass
+      POSTGRES_DB: de_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - de-net
+    profiles: ["core","dw","airflow","streaming"]
+
+  ###########################################################################
+  # DATA LAKEHOUSE: MinIO + Hive Metastore + Trino
+  ###########################################################################
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-05-01T01-11-10Z
+    container_name: de_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # Console
+    volumes:
+      - minio_data:/data
+    networks:
+      - de-net
+    profiles: ["lakehouse","core","spark"]
+
+  minio-create-bucket:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb -p local/lakehouse || true &&
+      mc mb -p local/raw || true &&
+      mc mb -p local/bronze || true &&
+      mc mb -p local/silver || true &&
+      mc mb -p local/gold || true &&
+      exit 0
+      "
+    networks:
+      - de-net
+    profiles: ["lakehouse","core","spark"]
+
+  hive-metastore-db:
+    image: postgres:15
+    container_name: de_hive_metastore_db
+    environment:
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: hive
+      POSTGRES_DB: metastore
+    volumes:
+      - hive_metastore_db:/var/lib/postgresql/data
+    networks:
+      - de-net
+    profiles: ["lakehouse"]
+
+  hive-metastore:
+    image: apache/hive:3.1.3
+    container_name: de_hive_metastore
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: postgres
+      DB_HOST: hive-metastore-db
+      DB_NAME: metastore
+      DB_USER: hive
+      DB_PASSWORD: hive
+    ports:
+      - "9083:9083"
+    depends_on:
+      - hive-metastore-db
+    networks:
+      - de-net
+    profiles: ["lakehouse"]
+
+  trino:
+    image: trinodb/trino:435
+    container_name: de_trino
+    ports:
+      - "8080:8080"
+    depends_on:
+      - hive-metastore
+      - minio
+    volumes:
+      - ./trino/etc:/etc/trino   # trino.properties + catalog/hive.properties
+    networks:
+      - de-net
+    profiles: ["lakehouse","core","bi"]
+
+  ###########################################################################
+  # SPARK (Batch)
+  ###########################################################################
+  spark-master:
+    image: bitnami/spark:3.5
+    container_name: de_spark_master
+    environment:
+      SPARK_MODE: master
+      SPARK_MASTER_HOST: spark-master
+    ports:
+      - "7077:7077"
+      - "8081:8080"  # Spark UI
+    volumes:
+      - spark_history:/tmp/spark-events
+    networks:
+      - de-net
+    profiles: ["spark","lakehouse"]
+
+  spark-worker:
+    image: bitnami/spark:3.5
+    container_name: de_spark_worker
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+    depends_on:
+      - spark-master
+    networks:
+      - de-net
+    profiles: ["spark","lakehouse"]
+
+  ###########################################################################
+  # STREAMING: Zookeeper + Kafka + Kafka Connect (Debezium)
+  ###########################################################################
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: de_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - de-net
+    profiles: ["streaming"]
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: de_kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - de-net
+    profiles: ["streaming"]
+
+  kafka-connect:
+    image: debezium/connect:2.7
+    container_name: de_kafka_connect
+    depends_on:
+      - kafka
+      - postgres
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: connect-configs
+      OFFSET_STORAGE_TOPIC: connect-offsets
+      STATUS_STORAGE_TOPIC: connect-status
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_PLUGIN_PATH: /kafka/connect
+    networks:
+      - de-net
+    profiles: ["streaming"]
+
+  ###########################################################################
+  # AIRFLOW (LocalExecutor, dùng chung Postgres/de_db)
+  ###########################################################################
+  airflow:
+    image: apache/airflow:2.9.2
+    container_name: de_airflow
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - minio
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__FERNET_KEY: "a_random_fernet_key_please_change"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://de_user:de_pass@postgres:5432/de_db
+    command: >
+      bash -c "
+      airflow db init &&
+      airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true &&
+      airflow webserver &
+      airflow scheduler
+      "
+    ports:
+      - "8088:8080"
+    volumes:
+      - airflow_dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+      - airflow_plugins:/opt/airflow/plugins
+      - ./airflow/dags:/opt/airflow/dags-local
+      - ./airflow/spark_jobs:/opt/airflow/spark_jobs
+    networks:
+      - de-net
+    profiles: ["airflow"]
+
+  ###########################################################################
+  # BI: Metabase
+  ###########################################################################
+  metabase:
+    image: metabase/metabase:v0.49.12
+    container_name: de_metabase
+    ports:
+      - "3000:3000"
+    environment:
+      MB_DB_FILE: /metabase-data/metabase.db
+    volumes:
+      - metabase_data:/metabase-data
+    depends_on:
+      - postgres
+    networks:
+      - de-net
+    profiles: ["bi"]
+
+  ###########################################################################
+  # FEATURE STORE / Caching: Redis
+  ###########################################################################
+  redis:
+    image: redis:7
+    container_name: de_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - de-net
+    profiles: ["featurestore"]
