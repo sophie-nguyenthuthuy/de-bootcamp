@@ -1,0 +1,13 @@
+product_name,category,price
+iPhone 15,Electronics,23000000
+Samsung Galaxy S24,Electronics,21000000
+MacBook Air M3,Laptop,32000000
+AirPods Pro 2,Audio,5500000
+Sony WH-1000XM5,Audio,9000000
+Logitech MX Master 3,Accessory,2500000
+,Electronics,1000000
+Dirty Product,,not_a_number
+Duplicate Item,Audio,5500000
+Duplicate Item,Audio,5500000
+  Trim Me  ,  Laptop  ,  15000000
+Keyboard,Accessory,800000

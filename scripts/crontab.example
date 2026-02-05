@@ -1,0 +1,13 @@
+# =============================================================================
+# Crontab example — Week 3 Buổi 6 (schedule ingest + ETL)
+# Copy lines below into crontab -e and replace /path/to/de-bootcamp and DB_URI.
+# =============================================================================
+#
+# Run ingest_raw_and_etl every day at 02:00
+# 0 2 * * * cd /path/to/de-bootcamp && DB_URI="postgresql://de_user:de_pass@localhost:5432/de_db" ./scripts/ingest_raw_and_etl.sh >> /path/to/de-bootcamp/logs/ingest_etl.log 2>&1
+#
+# Run every 15 minutes (for testing only)
+# */15 * * * * cd /path/to/de-bootcamp && DB_URI="postgresql://de_user:de_pass@localhost:5432/de_db" ./scripts/ingest_raw_and_etl.sh >> /path/to/de-bootcamp/logs/ingest_etl.log 2>&1
+#
+# Run every day at 02:00, using absolute paths (recommended for cron)
+# 0 2 * * * /bin/bash -c 'cd /path/to/de-bootcamp && export DB_URI="postgresql://de_user:de_pass@localhost:5432/de_db" && ./scripts/ingest_raw_and_etl.sh' >> /path/to/de-bootcamp/logs/ingest_etl.log 2>&1

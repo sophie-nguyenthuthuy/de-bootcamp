@@ -1,0 +1,2 @@
+# Week 6 Buổi 12 — Kafka Producer & Consumer
+kafka-python>=2.0.2

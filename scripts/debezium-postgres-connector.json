@@ -1,0 +1,16 @@
+{
+  "name": "debezium-postgres-orders",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "de_user",
+    "database.password": "de_pass",
+    "database.dbname": "de_db",
+    "topic.prefix": "dbserver1",
+    "plugin.name": "pgoutput",
+    "table.include.list": "app.orders",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter"
+  }
+}
