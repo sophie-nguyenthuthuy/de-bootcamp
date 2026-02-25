@@ -117,7 +117,10 @@ psql postgresql://de_user:de_pass@localhost:5432/de_db -f sql/02_seed_sample_dat
 ## 6. TEST TRINO + MINIO + LAKEHOUSE
 
 Mở Trino CLI hoặc web UI → chạy:
-
+Mở bằng CLI: 
+```
+docker exec -it de_trino trino
+```
 ```sql
 SHOW CATALOGS;
 SHOW SCHEMAS FROM hive;
