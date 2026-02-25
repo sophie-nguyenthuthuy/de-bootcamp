@@ -29,7 +29,10 @@ psql postgresql://de_user:de_pass@localhost:5432/de_db -f sql/01_create_oltp_sch
 - Cài dependency (trong thư mục `week03/`):
 
 ```bash
+sudo apt install python3.12-venv -y
 cd week03
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
