@@ -83,6 +83,7 @@ Pass: minioadmin
 
 ### Trino UI
 ```
+User: admin
 http://localhost:8080
 ```
 
