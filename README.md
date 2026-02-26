@@ -90,8 +90,8 @@ http://localhost:8080
 ### Airflow UI
 ```
 http://localhost:8082
-User: admin
-Pass: admin
+User: airflow
+Pass: airflow
 ```
 
 ### Metabase
