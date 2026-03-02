@@ -59,7 +59,17 @@ docker compose --profile airflow up -d
 ```bash
 docker compose up -d
 ```
-
+### Nếu lỗi hive-metastore :
+```bash
+docker compose up -d
+```docker run --rm \
+  --network de-bootcamp_default \
+  -e HADOOP_CLIENT_OPTS="-Djavax.jdo.option.ConnectionURL=jdbc:postgresql://hive-metastore-db:5432/metastore -Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver -Djavax.jdo.option.ConnectionUserName=hive -Djavax.jdo.option.ConnectionPassword=hive" \
+  --entrypoint /opt/hive/bin/schematool \
+  apache/hive:3.1.3 \
+  -dbType postgres \
+  -initSchema
+```
 ### Dừng tất cả:
 ```bash
 docker compose down
